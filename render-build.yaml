@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: biochar-rag-api
+    runtime: python
+    plan: starter
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: R2_ENDPOINT
+        sync: false
+      - key: R2_KEY
+        sync: false
+      - key: R2_SECRET
+        sync: false
+      - key: R2_BUCKET
+        value: biochar-rag
+      - key: TOGETHER_API_KEY
+        sync: false
+      - key: EMAIL_DATA_PATH
+        sync: false
