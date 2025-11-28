@@ -3,6 +3,5 @@ uvicorn[standard]
 numpy
 pandas
 faiss-cpu
-boto3
 requests
-python-dotenv
+pydantic

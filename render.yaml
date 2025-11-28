@@ -17,14 +17,6 @@ services:
         value: /var/data
       - key: EMAIL_DATA_PATH
         value: /var/data/emails_clean_normalized.csv
-      - key: R2_ENDPOINT
-        sync: false
-      - key: R2_KEY
-        sync: false
-      - key: R2_SECRET
-        sync: false
-      - key: R2_BUCKET
-        value: biochar-rag
       - key: TOGETHER_API_KEY
         sync: false
       - key: TOGETHER_MODEL
