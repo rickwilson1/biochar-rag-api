@@ -8,9 +8,6 @@ import numpy as np
 import faiss
 import requests
 
-from r2_utils import ensure_file_from_r2
-from email_store import get_full_email  # (kept for future use, even if unused now)
-
 # ---------------------------------------------------------------------------
 # Together API configuration
 # ---------------------------------------------------------------------------
@@ -31,23 +28,25 @@ _metadata_df = None  # placeholder if you later attach real metadata
 # Load FAISS index + embeddings
 # ---------------------------------------------------------------------------
 
-def load_vector_store() -> None:
-    """
-    Ensure embeddings and FAISS index are loaded into memory.
-    Downloads from R2 if not already present on the local disk.
-    """
+def load_vector_store():
     global _embeddings, _index
 
     if _index is not None and _embeddings is not None:
         return
 
-    # These filenames must match the objects in your R2 bucket.
-    emb_path = ensure_file_from_r2("embeddings.npy")
-    idx_path = ensure_file_from_r2("faiss.index")
+    from pathlib import Path
+
+    emb_path = Path("/opt/render/project/src/embeddings.npy")
+    idx_path = Path("/opt/render/project/src/faiss.index")
+
+    if not emb_path.exists():
+        raise FileNotFoundError(f"Missing embeddings at {emb_path}")
+
+    if not idx_path.exists():
+        raise FileNotFoundError(f"Missing FAISS index at {idx_path}")
 
     _embeddings = np.load(str(emb_path))
     _index = faiss.read_index(str(idx_path))
-
 
 # ---------------------------------------------------------------------------
 # Query embedding (TEMPORARY STUB)
@@ -187,9 +186,18 @@ When you cite, use [Source N] notation in the answer.
     )
     resp.raise_for_status()
     out = resp.json()
-
-    # Adjust this if Together changes their schema
+    
+# Adjust this if Together changes their schema
+# Try the common Together schema first
+if "output" in out and "choices" in out["output"]:
     return out["output"]["choices"][0]["text"]
+
+# Fallback schema
+if "choices" in out:
+    return out["choices"][0]["text"]
+
+# If neither works, fail loudly with a helpful error
+raise KeyError(f"Unexpected Together response format: {out}")
 
 
 # ---------------------------------------------------------------------------
