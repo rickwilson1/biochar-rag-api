@@ -45,8 +45,9 @@ def load_vector_store():
 
     from pathlib import Path
 
-    emb_path = Path("/opt/render/project/src/embeddings.npy")
-    idx_path = Path("/opt/render/project/src/faiss.index")
+
+    emb_path = Path("/opt/render/project/src/data/embeddings.npy")
+    idx_path = Path("/opt/render/project/src/data/faiss.index")
 
     if not emb_path.exists():
         raise FileNotFoundError(f"Missing embeddings at {emb_path}")
