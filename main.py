@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import os
+from pathlib import Path
 from typing import Dict, Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Header
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -12,6 +14,9 @@ from rag_core import build_answer_payload, search
 from email_store import get_full_email
 
 app = FastAPI(title="Biochar RAG API")
+
+DATA_DIR = Path(os.getenv("DATA_DIR", "/var/data"))
+UPLOAD_SECRET = os.getenv("TOGETHER_API_KEY", "")  # Reuse this as upload auth
 
 
 # ---------------------------------------------------------------------------
@@ -31,6 +36,88 @@ class QueryRequest(BaseModel):
 @app.get("/health")
 def health() -> Dict[str, str]:
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Data status - check which files are present
+# ---------------------------------------------------------------------------
+
+@app.get("/data-status")
+def data_status() -> Dict[str, Any]:
+    """Check which data files exist on the persistent disk."""
+    files = {
+        "embeddings.npy": (DATA_DIR / "embeddings.npy").exists(),
+        "faiss.index": (DATA_DIR / "faiss.index").exists(),
+        "emails_clean_normalized.csv": (DATA_DIR / "emails_clean_normalized.csv").exists(),
+    }
+    
+    sizes = {}
+    for name, exists in files.items():
+        if exists:
+            size_mb = (DATA_DIR / name).stat().st_size / (1024 * 1024)
+            sizes[name] = f"{size_mb:.1f} MB"
+        else:
+            sizes[name] = "missing"
+    
+    return {
+        "data_dir": str(DATA_DIR),
+        "files": files,
+        "sizes": sizes,
+        "ready": all(files.values()),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Upload endpoint - for uploading data files to persistent disk
+# ---------------------------------------------------------------------------
+
+@app.post("/upload/{filename}")
+async def upload_file(
+    filename: str,
+    file: UploadFile = File(...),
+    authorization: str = Header(None),
+):
+    """
+    Upload a data file to the persistent disk.
+    Requires Authorization header with your TOGETHER_API_KEY.
+    
+    Usage:
+        curl -X POST "https://your-app.onrender.com/upload/embeddings.npy" \
+             -H "Authorization: Bearer YOUR_TOGETHER_API_KEY" \
+             -F "file=@embeddings.npy"
+    """
+    # Verify auth
+    if not UPLOAD_SECRET:
+        raise HTTPException(status_code=500, detail="Server not configured for uploads")
+    
+    expected = f"Bearer {UPLOAD_SECRET}"
+    if authorization != expected:
+        raise HTTPException(status_code=401, detail="Invalid authorization")
+    
+    # Only allow specific filenames
+    allowed = {"embeddings.npy", "faiss.index", "emails_clean_normalized.csv"}
+    if filename not in allowed:
+        raise HTTPException(status_code=400, detail=f"Filename must be one of: {allowed}")
+    
+    # Ensure data directory exists
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Save file in chunks to handle large files
+    file_path = DATA_DIR / filename
+    total_bytes = 0
+    
+    with open(file_path, "wb") as f:
+        while chunk := await file.read(1024 * 1024):  # 1MB chunks
+            f.write(chunk)
+            total_bytes += len(chunk)
+    
+    size_mb = total_bytes / (1024 * 1024)
+    return {
+        "status": "uploaded",
+        "filename": filename,
+        "size": f"{size_mb:.1f} MB",
+        "path": str(file_path),
+    }
 
 
 # ---------------------------------------------------------------------------

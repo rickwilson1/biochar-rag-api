@@ -5,3 +5,4 @@ pandas
 faiss-cpu
 requests
 pydantic
+python-multipart
