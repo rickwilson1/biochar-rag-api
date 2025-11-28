@@ -7,7 +7,9 @@ from typing import Dict, Any
 
 import pandas as pd
 
-EMAIL_DATA_PATH = Path(os.environ.get("EMAIL_DATA_PATH", "data/emails_clean_normalized.csv"))
+# Use /var/data on Render, fallback to ./data locally
+DATA_DIR = os.getenv("DATA_DIR", "/var/data")
+EMAIL_DATA_PATH = Path(os.getenv("EMAIL_DATA_PATH", f"{DATA_DIR}/emails_clean_normalized.csv"))
 
 _email_df: pd.DataFrame | None = None
 
@@ -15,9 +17,11 @@ _email_df: pd.DataFrame | None = None
 def load_email_dataframe() -> pd.DataFrame:
     global _email_df
     if _email_df is None:
+        print(f"DEBUG: Loading email data from {EMAIL_DATA_PATH}", flush=True)
         if not EMAIL_DATA_PATH.exists():
             raise FileNotFoundError(f"Email data file not found at {EMAIL_DATA_PATH}")
         _email_df = pd.read_csv(EMAIL_DATA_PATH)
+        print(f"DEBUG: Loaded {len(_email_df)} email records", flush=True)
     return _email_df
 
 

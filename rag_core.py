@@ -26,6 +26,13 @@ TOGETHER_MODEL = os.getenv("TOGETHER_MODEL", "deepseek-r1")
 
 
 # ---------------------------------------------------------------------------
+# Data paths - use /var/data on Render, fallback to ./data locally
+# ---------------------------------------------------------------------------
+
+DATA_DIR = os.getenv("DATA_DIR", "/var/data")
+
+
+# ---------------------------------------------------------------------------
 # Global vector store handles
 # ---------------------------------------------------------------------------
 
@@ -45,9 +52,11 @@ def load_vector_store():
 
     from pathlib import Path
 
+    emb_path = Path(DATA_DIR) / "embeddings.npy"
+    idx_path = Path(DATA_DIR) / "faiss.index"
 
-    emb_path = Path("/opt/render/project/src/data/embeddings.npy")
-    idx_path = Path("/opt/render/project/src/data/faiss.index")
+    print(f"DEBUG: Loading embeddings from {emb_path}", flush=True)
+    print(f"DEBUG: Loading FAISS index from {idx_path}", flush=True)
 
     if not emb_path.exists():
         raise FileNotFoundError(f"Missing embeddings at {emb_path}")
@@ -57,6 +66,9 @@ def load_vector_store():
 
     _embeddings = np.load(str(emb_path))
     _index = faiss.read_index(str(idx_path))
+
+    print(f"DEBUG: Loaded embeddings shape: {_embeddings.shape}", flush=True)
+    print(f"DEBUG: FAISS index loaded successfully", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +91,7 @@ def embed_query_locally(text: str) -> np.ndarray:
     vec = rng.random(dim)
     vec = vec / np.linalg.norm(vec)
 
-    return vec.reshape(1, -1)
+    return vec.reshape(1, -1).astype(np.float32)
 
 
 # ---------------------------------------------------------------------------

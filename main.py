@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from rag_core import build_answer_payload, search
 from email_store import get_full_email
@@ -13,60 +14,77 @@ from email_store import get_full_email
 app = FastAPI(title="Biochar RAG API")
 
 
+# ---------------------------------------------------------------------------
+# Request models for proper validation
+# ---------------------------------------------------------------------------
+
+class QueryRequest(BaseModel):
+    query: str
+    min_score: float = 0.65
+    max_results: int = 20
+
+
+# ---------------------------------------------------------------------------
+# Health check
+# ---------------------------------------------------------------------------
+
 @app.get("/health")
 def health() -> Dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/search")
-def search_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
-    query: str = payload.get("query", "")
-    min_score: float = float(payload.get("min_score", 0.65))
-    max_results: int = int(payload.get("max_results", 20))
+# ---------------------------------------------------------------------------
+# Search endpoint - semantic search only
+# ---------------------------------------------------------------------------
 
-    if not query.strip():
+@app.post("/search")
+def search_endpoint(payload: QueryRequest) -> Dict[str, Any]:
+    if not payload.query.strip():
         raise HTTPException(status_code=400, detail="Query is required")
 
-    results = search(query, min_score=min_score, max_results=max_results)
+    results = search(payload.query, min_score=payload.min_score, max_results=payload.max_results)
     return {"results": results}
 
 
-@app.post("/query")
-def query_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
-    query: str = payload.get("query", "")
-    min_score: float = float(payload.get("min_score", 0.65))
-    max_results: int = int(payload.get("max_results", 20))
+# ---------------------------------------------------------------------------
+# Query endpoint - search + LLM answer
+# ---------------------------------------------------------------------------
 
-    if not query.strip():
+@app.post("/query")
+def query_endpoint(payload: QueryRequest) -> Dict[str, Any]:
+    if not payload.query.strip():
         raise HTTPException(status_code=400, detail="Query is required")
 
-    return build_answer_payload(query, min_score=min_score, max_results=max_results)
+    return build_answer_payload(payload.query, min_score=payload.min_score, max_results=payload.max_results)
 
+
+# ---------------------------------------------------------------------------
+# Query stream endpoint - streaming response
+# ---------------------------------------------------------------------------
 
 @app.post("/query_stream")
-async def query_stream_endpoint(payload: Dict[str, Any]):
+async def query_stream_endpoint(payload: QueryRequest):
     """
-    For now, we implement a simple non-streaming wrapper that yields the full
-    answer once. You can later switch to Together's streaming API.
+    Streaming endpoint that yields the answer in chunks.
     """
-    query: str = payload.get("query", "")
-    min_score: float = float(payload.get("min_score", 0.65))
-    max_results: int = int(payload.get("max_results", 20))
-
-    if not query.strip():
+    if not payload.query.strip():
         raise HTTPException(status_code=400, detail="Query is required")
 
-    data = build_answer_payload(query, min_score=min_score, max_results=max_results)
+    data = build_answer_payload(payload.query, min_score=payload.min_score, max_results=payload.max_results)
     answer = data["answer"]
 
-    async def fake_stream():
-        # Yield in chunks just so the UI sees multiple events
+    async def stream_response():
+        # Yield in chunks for streaming effect
         for chunk in answer.split(" "):
             yield chunk + " "
             await asyncio.sleep(0.01)
 
-    return StreamingResponse(fake_stream(), media_type="text/plain")
+    return StreamingResponse(stream_response(), media_type="text/plain")
 
+
+# ---------------------------------------------------------------------------
+# Email endpoint - get full email by thread_id
+# ---------------------------------------------------------------------------
 
 @app.get("/email/{thread_id}")
 def get_email(thread_id: str) -> Dict[str, Any]:

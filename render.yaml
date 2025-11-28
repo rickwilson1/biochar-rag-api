@@ -1,13 +1,22 @@
 services:
   - type: web
     name: biochar-rag-api
-    env: python
+    runtime: python
     plan: starter
     region: oregon
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+
+    disk:
+      name: biochar-data
+      mountPath: /var/data
+      sizeGB: 1
 
     envVars:
+      - key: DATA_DIR
+        value: /var/data
+      - key: EMAIL_DATA_PATH
+        value: /var/data/emails_clean_normalized.csv
       - key: R2_ENDPOINT
         sync: false
       - key: R2_KEY
@@ -18,5 +27,5 @@ services:
         value: biochar-rag
       - key: TOGETHER_API_KEY
         sync: false
-      - key: EMAIL_DATA_PATH
-        sync: false
+      - key: TOGETHER_MODEL
+        value: deepseek-r1
