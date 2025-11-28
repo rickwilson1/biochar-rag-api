@@ -33,15 +33,16 @@ def load_vector_store():
     _embeddings = np.load(str(emb_path))
     _index = faiss.read_index(str(idx_path))
 
-
 def embed_query_locally(text: str) -> np.ndarray:
     """
-    Placeholder: in your current pipeline you probably use the same encoder to
-    embed the query. For now, this stub just raises. You’ll need to plug in your
-    actual embedding model (BGE-large v1.5 or similar).
+    TEMPORARY STUB: Create a random embedding with correct dimension.
+    Allows the RAG service to function until a real embedding model is added.
     """
-    raise NotImplementedError("You need to plug in your query embedding model here.")
+    load_vector_store()
 
+    dim = _index.d  # embedding dimension used in your FAISS index
+    # return a 1 x dim vector
+    return np.random.rand(1, dim).astype(np.float32)
 
 def search(
     query: str,
