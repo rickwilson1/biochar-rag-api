@@ -8,12 +8,14 @@ import numpy as np
 import faiss
 import requests
 
+
 # ---------------------------------------------------------------------------
 # Together API configuration
 # ---------------------------------------------------------------------------
 
 TOGETHER_API_KEY = os.environ["TOGETHER_API_KEY"]
-TOGETHER_MODEL = os.environ.get("TOGETHER_MODEL", "deepseek-r1")  # adjust if needed
+TOGETHER_MODEL = os.environ.get("TOGETHER_MODEL", "deepseek-r1")
+
 
 # ---------------------------------------------------------------------------
 # Global vector store handles
@@ -21,11 +23,10 @@ TOGETHER_MODEL = os.environ.get("TOGETHER_MODEL", "deepseek-r1")  # adjust if ne
 
 _embeddings: np.ndarray | None = None
 _index: faiss.Index | None = None
-_metadata_df = None  # placeholder if you later attach real metadata
 
 
 # ---------------------------------------------------------------------------
-# Load FAISS index + embeddings
+# Load FAISS + embeddings from Render mounted disk
 # ---------------------------------------------------------------------------
 
 def load_vector_store():
@@ -48,42 +49,30 @@ def load_vector_store():
     _embeddings = np.load(str(emb_path))
     _index = faiss.read_index(str(idx_path))
 
+
 # ---------------------------------------------------------------------------
-# Query embedding (TEMPORARY STUB)
+# Temporary stub embedding for queries
 # ---------------------------------------------------------------------------
 
 def embed_query_locally(text: str) -> np.ndarray:
     """
-    Temporary fake embedding so the API works end-to-end.
-
-    It produces a deterministic pseudo-random vector of the same
-    dimension as your stored embeddings. This lets FAISS search run
-    without having a real embedding model wired up yet.
-
-    TODO: replace with a real embedding model (e.g. BGE-large) that
-    matches how you built `embeddings.npy`.
+    Temporary deterministic pseudo-embedding.
+    Replace with the real embedding model you used to generate embeddings.npy.
     """
-    # Make sure vectors are loaded so we know the dimensionality.
     if _embeddings is None:
         load_vector_store()
 
-    assert _embeddings is not None
     dim = _embeddings.shape[1]
-
-    # Deterministic RNG keyed on the query text
     seed = abs(hash(text)) % (2**32)
     rng = np.random.default_rng(seed)
 
-    vec = rng.random(dim)  # random vector
-    # Normalize so magnitude is 1 (like a unit embedding)
+    vec = rng.random(dim)
     vec = vec / np.linalg.norm(vec)
-
-    # FAISS expects shape (1, dim) for a single query
     return vec.reshape(1, -1)
 
 
 # ---------------------------------------------------------------------------
-# Vector search
+# FAISS search
 # ---------------------------------------------------------------------------
 
 def search(
@@ -91,33 +80,20 @@ def search(
     min_score: float = 0.65,
     max_results: int = 20,
 ) -> List[Dict[str, Any]]:
-    """
-    Run a similarity search in the FAISS index and return a list of source dicts.
-
-    Each result currently contains placeholder metadata except for the
-    score and a synthetic chunk/thread id. You can later wire this into
-    your real email metadata (subjects, senders, etc.).
-    """
     load_vector_store()
-    assert _index is not None
+    q_vec = embed_query_locally(query)
 
-    q_vec = embed_query_locally(query)  # shape (1, dim)
     distances, idxs = _index.search(q_vec, max_results)
 
     results: List[Dict[str, Any]] = []
-
-    # Convert FAISS distances into a pseudo-similarity score.
     for rank, (dist, idx) in enumerate(zip(distances[0], idxs[0])):
         if idx < 0:
             continue
 
-        # Simple monotonic transform: smaller distance ⇒ higher score
         score = float(1.0 / (1.0 + dist))
-
         if score < min_score:
             continue
 
-        # TODO: replace with real metadata lookup from your email store
         results.append(
             {
                 "rank": rank,
@@ -125,7 +101,7 @@ def search(
                 "thread_id": f"thread-{idx}",
                 "score": score,
                 "content_type": "email",
-                "subject": f"Subject placeholder {idx}",
+                "subject": f"Subject {idx}",
                 "from": "",
                 "to": "",
                 "date": "",
@@ -137,20 +113,17 @@ def search(
 
 
 # ---------------------------------------------------------------------------
-# Call Together for final answer
+# Call Together API
 # ---------------------------------------------------------------------------
 
 def build_answer_from_together(
     query: str,
     sources: List[Dict[str, Any]],
 ) -> str:
-    """
-    Call Together's completion endpoint with the retrieved context.
-    Adjust `model` and response parsing to match your actual usage.
-    """
+
     context_blocks: List[str] = []
     for i, s in enumerate(sources, start=1):
-        snippet = s.get("text", "") or ""
+        snippet = s.get("text", "")
         context_blocks.append(f"[Source {i}] {snippet[:1200]}")
 
     context = "\n\n".join(context_blocks)
@@ -160,10 +133,10 @@ def build_answer_from_together(
 Question:
 {query}
 
-Context (email excerpts with numbered sources):
+Context (email excerpts):
 {context}
 
-When you cite, use [Source N] notation in the answer.
+When you cite, use [Source N].
 """
 
     headers = {
@@ -174,56 +147,4 @@ When you cite, use [Source N] notation in the answer.
         "model": TOGETHER_MODEL,
         "input": prompt,
         "max_tokens": 1024,
-        "temperature": 0.3,
-        "stream": False,
-    }
-
-    resp = requests.post(
-        "https://api.together.xyz/v1/completions",
-        json=data,
-        headers=headers,
-        timeout=60,
-    )
-    resp.raise_for_status()
-    out = resp.json()
-    
-# Adjust this if Together changes their schema
-# Try the common Together schema first
-if "output" in out and "choices" in out["output"]:
-    return out["output"]["choices"][0]["text"]
-
-# Fallback schema
-if "choices" in out:
-    return out["choices"][0]["text"]
-
-# If neither works, fail loudly with a helpful error
-raise KeyError(f"Unexpected Together response format: {out}")
-
-
-# ---------------------------------------------------------------------------
-# Main API payload builder
-# ---------------------------------------------------------------------------
-
-def build_answer_payload(
-    query: str,
-    min_score: float,
-    max_results: int,
-) -> Dict[str, Any]:
-    """
-    Orchestrate search + LLM answer into a JSON-serializable payload
-    consumed by your Streamlit frontend.
-    """
-    sources = search(query, min_score=min_score, max_results=max_results)
-    answer = build_answer_from_together(query, sources)
-
-    payload: Dict[str, Any] = {
-        "answer": answer,
-        "count": len(sources),
-        "sources": sources,
-        "stats": {
-            "total_chunks": len(sources),
-            "total_threads": len({s.get("thread_id") for s in sources}),
-            "returned_threads": len({s.get("thread_id") for s in sources}),
-        },
-    }
-    return payload
+       
