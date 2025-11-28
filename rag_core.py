@@ -13,8 +13,16 @@ import requests
 # Together API configuration
 # ---------------------------------------------------------------------------
 
-TOGETHER_API_KEY = os.environ["TOGETHER_API_KEY"]
-TOGETHER_MODEL = os.environ.get("TOGETHER_MODEL", "deepseek-r1")
+TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY", "")
+
+# Debug: see whether Render actually passed it in
+print(
+    "DEBUG: TOGETHER_API_KEY is "
+    + ("SET" if TOGETHER_API_KEY else "MISSING"),
+    flush=True,
+)
+
+TOGETHER_MODEL = os.getenv("TOGETHER_MODEL", "deepseek-r1")
 
 
 # ---------------------------------------------------------------------------
