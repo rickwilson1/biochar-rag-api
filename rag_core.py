@@ -26,7 +26,7 @@ _index: faiss.Index | None = None
 
 
 # ---------------------------------------------------------------------------
-# Load FAISS + embeddings from Render mounted disk
+# Load FAISS + embeddings from Render persistent disk
 # ---------------------------------------------------------------------------
 
 def load_vector_store():
@@ -51,28 +51,30 @@ def load_vector_store():
 
 
 # ---------------------------------------------------------------------------
-# Temporary stub embedding for queries
+# TEMPORARY deterministic embedding stub
 # ---------------------------------------------------------------------------
 
 def embed_query_locally(text: str) -> np.ndarray:
     """
     Temporary deterministic pseudo-embedding.
-    Replace with the real embedding model you used to generate embeddings.npy.
+    Replace with your real embedding model later.
     """
     if _embeddings is None:
         load_vector_store()
 
     dim = _embeddings.shape[1]
+
     seed = abs(hash(text)) % (2**32)
     rng = np.random.default_rng(seed)
 
     vec = rng.random(dim)
     vec = vec / np.linalg.norm(vec)
+
     return vec.reshape(1, -1)
 
 
 # ---------------------------------------------------------------------------
-# FAISS search
+# FAISS similarity search
 # ---------------------------------------------------------------------------
 
 def search(
@@ -80,12 +82,14 @@ def search(
     min_score: float = 0.65,
     max_results: int = 20,
 ) -> List[Dict[str, Any]]:
+
     load_vector_store()
     q_vec = embed_query_locally(query)
 
     distances, idxs = _index.search(q_vec, max_results)
 
     results: List[Dict[str, Any]] = []
+
     for rank, (dist, idx) in enumerate(zip(distances[0], idxs[0])):
         if idx < 0:
             continue
@@ -113,7 +117,7 @@ def search(
 
 
 # ---------------------------------------------------------------------------
-# Call Together API
+# Call Together API to build final answer
 # ---------------------------------------------------------------------------
 
 def build_answer_from_together(
@@ -121,9 +125,10 @@ def build_answer_from_together(
     sources: List[Dict[str, Any]],
 ) -> str:
 
+    # Build context from source chunks
     context_blocks: List[str] = []
     for i, s in enumerate(sources, start=1):
-        snippet = s.get("text", "")
+        snippet = s.get("text", "") or ""
         context_blocks.append(f"[Source {i}] {snippet[:1200]}")
 
     context = "\n\n".join(context_blocks)
@@ -133,7 +138,7 @@ def build_answer_from_together(
 Question:
 {query}
 
-Context (email excerpts):
+Context (email excerpts with numbered sources):
 {context}
 
 When you cite, use [Source N].
@@ -143,8 +148,55 @@ When you cite, use [Source N].
         "Authorization": f"Bearer {TOGETHER_API_KEY}",
         "Content-Type": "application/json",
     }
+
     data = {
         "model": TOGETHER_MODEL,
         "input": prompt,
         "max_tokens": 1024,
-       
+        "temperature": 0.3,
+        "stream": False,
+    }
+
+    resp = requests.post(
+        "https://api.together.xyz/v1/completions",
+        json=data,
+        headers=headers,
+        timeout=60,
+    )
+    resp.raise_for_status()
+
+    out = resp.json()
+
+    # Handle both Together response formats
+    if "output" in out and "choices" in out["output"]:
+        return out["output"]["choices"][0]["text"]
+
+    if "choices" in out:
+        return out["choices"][0]["text"]
+
+    raise KeyError(f"Unexpected Together response format: {out}")
+
+
+# ---------------------------------------------------------------------------
+# Build final answer payload for API
+# ---------------------------------------------------------------------------
+
+def build_answer_payload(
+    query: str,
+    min_score: float,
+    max_results: int,
+) -> Dict[str, Any]:
+
+    sources = search(query, min_score=min_score, max_results=max_results)
+    answer = build_answer_from_together(query, sources)
+
+    return {
+        "answer": answer,
+        "count": len(sources),
+        "sources": sources,
+        "stats": {
+            "total_chunks": len(sources),
+            "total_threads": len({s["thread_id"] for s in sources}),
+            "returned_threads": len({s["thread_id"] for s in sources}),
+        },
+    }
