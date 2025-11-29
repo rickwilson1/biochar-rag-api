@@ -24,6 +24,7 @@ print(
 )
 
 TOGETHER_MODEL = os.getenv("TOGETHER_MODEL", "deepseek-ai/DeepSeek-R1-0528")
+FALLBACK_MODEL = "meta-llama/Llama-3.1-70B-Instruct"  # Fast fallback if primary times out
 
 
 # ---------------------------------------------------------------------------
@@ -87,10 +88,11 @@ def translate_to_english(text: str) -> str:
         return text
     
     try:
+        # Use fast Llama model for translation (no need for DeepSeek's deep thinking)
         resp = requests.post(
             "https://api.together.xyz/v1/chat/completions",
             json={
-                "model": TOGETHER_MODEL,
+                "model": FALLBACK_MODEL,
                 "messages": [{
                     "role": "user", 
                     "content": f"If this text is not in English, translate it to English. If already English, return it unchanged. Only output the text, nothing else:\n\n{text}"
@@ -102,7 +104,7 @@ def translate_to_english(text: str) -> str:
                 "Authorization": f"Bearer {TOGETHER_API_KEY}",
                 "Content-Type": "application/json",
             },
-            timeout=30,
+            timeout=15,
         )
         resp.raise_for_status()
         
@@ -294,30 +296,42 @@ When you cite, use [Source N].
         "temperature": 0.3,
     }
 
-    try:
+    import re
+    
+    def call_model(model: str, timeout: int) -> str:
+        """Call a specific model with given timeout."""
+        data["model"] = model
         resp = requests.post(
             "https://api.together.xyz/v1/chat/completions",
             json=data,
             headers=headers,
-            timeout=120,  # Increased timeout for DeepSeek R1 thinking
+            timeout=timeout,
         )
         resp.raise_for_status()
-
         out = resp.json()
         answer = out["choices"][0]["message"]["content"]
-        
         # Strip DeepSeek R1's <think>...</think> reasoning tags
-        import re
         answer = re.sub(r'<think>.*?</think>\s*', '', answer, flags=re.DOTALL)
-        
         return answer.strip()
     
+    # Try primary model first (DeepSeek R1)
+    try:
+        print(f"DEBUG: Trying primary model {TOGETHER_MODEL}", flush=True)
+        return call_model(TOGETHER_MODEL, timeout=90)
+    
+    except (requests.exceptions.Timeout, requests.exceptions.RequestException) as e:
+        print(f"DEBUG: Primary model failed ({e}), trying fallback {FALLBACK_MODEL}", flush=True)
+    
+    # Fallback to faster Llama model
+    try:
+        return call_model(FALLBACK_MODEL, timeout=30)
+    
     except requests.exceptions.Timeout:
-        print("DEBUG: LLM call timed out", flush=True)
+        print("DEBUG: Fallback model also timed out", flush=True)
         return "I found relevant information but the AI response timed out. Please try again or review the sources below."
     
     except Exception as e:
-        print(f"DEBUG: LLM call failed: {e}", flush=True)
+        print(f"DEBUG: Fallback model failed: {e}", flush=True)
         return f"I found relevant information but couldn't generate a summary. Error: {str(e)[:100]}"
 
 
