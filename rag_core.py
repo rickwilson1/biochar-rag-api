@@ -23,7 +23,7 @@ print(
     flush=True,
 )
 
-TOGETHER_MODEL = os.getenv("TOGETHER_MODEL", "deepseek-r1")
+TOGETHER_MODEL = os.getenv("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo")
 
 
 # ---------------------------------------------------------------------------
@@ -214,14 +214,15 @@ When you cite, use [Source N].
 
     data = {
         "model": TOGETHER_MODEL,
-        "input": prompt,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
         "max_tokens": 1024,
         "temperature": 0.3,
-        "stream": False,
     }
 
     resp = requests.post(
-        "https://api.together.xyz/v1/completions",
+        "https://api.together.xyz/v1/chat/completions",
         json=data,
         headers=headers,
         timeout=60,
@@ -229,15 +230,7 @@ When you cite, use [Source N].
     resp.raise_for_status()
 
     out = resp.json()
-
-    # Handle both Together response formats
-    if "output" in out and "choices" in out["output"]:
-        return out["output"]["choices"][0]["text"]
-
-    if "choices" in out:
-        return out["choices"][0]["text"]
-
-    raise KeyError(f"Unexpected Together response format: {out}")
+    return out["choices"][0]["message"]["content"]
 
 
 # ---------------------------------------------------------------------------
