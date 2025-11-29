@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Dict, Any
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Header
+from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -45,6 +45,19 @@ def health() -> Dict[str, str]:
 @app.get("/data-status")
 def data_status() -> Dict[str, Any]:
     """Check which data files exist on the persistent disk."""
+    
+    # Check if data dir exists and is writable
+    dir_exists = DATA_DIR.exists()
+    dir_writable = False
+    if dir_exists:
+        try:
+            test_file = DATA_DIR / ".write_test"
+            test_file.touch()
+            test_file.unlink()
+            dir_writable = True
+        except Exception:
+            pass
+    
     files = {
         "embeddings.npy": (DATA_DIR / "embeddings.npy").exists(),
         "faiss.index": (DATA_DIR / "faiss.index").exists(),
@@ -61,6 +74,8 @@ def data_status() -> Dict[str, Any]:
     
     return {
         "data_dir": str(DATA_DIR),
+        "dir_exists": dir_exists,
+        "dir_writable": dir_writable,
         "files": files,
         "sizes": sizes,
         "ready": all(files.values()),
@@ -68,23 +83,24 @@ def data_status() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Upload endpoint - for uploading data files to persistent disk
+# Upload endpoint - streams directly to disk (memory efficient)
 # ---------------------------------------------------------------------------
 
 @app.post("/upload/{filename}")
 async def upload_file(
     filename: str,
-    file: UploadFile = File(...),
+    request: Request,
     authorization: str = Header(None),
 ):
     """
-    Upload a data file to the persistent disk.
+    Upload a data file to the persistent disk using streaming.
     Requires Authorization header with your TOGETHER_API_KEY.
     
     Usage:
         curl -X POST "https://your-app.onrender.com/upload/embeddings.npy" \
              -H "Authorization: Bearer YOUR_TOGETHER_API_KEY" \
-             -F "file=@embeddings.npy"
+             -H "Content-Type: application/octet-stream" \
+             --data-binary @embeddings.npy
     """
     # Verify auth
     if not UPLOAD_SECRET:
@@ -100,16 +116,25 @@ async def upload_file(
         raise HTTPException(status_code=400, detail=f"Filename must be one of: {allowed}")
     
     # Ensure data directory exists
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Cannot create data dir: {e}")
     
-    # Save file in chunks to handle large files
+    # Stream directly to file - no memory buffering
     file_path = DATA_DIR / filename
     total_bytes = 0
     
-    with open(file_path, "wb") as f:
-        while chunk := await file.read(1024 * 1024):  # 1MB chunks
-            f.write(chunk)
-            total_bytes += len(chunk)
+    try:
+        with open(file_path, "wb") as f:
+            async for chunk in request.stream():
+                f.write(chunk)
+                total_bytes += len(chunk)
+    except Exception as e:
+        # Clean up partial file
+        if file_path.exists():
+            file_path.unlink()
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
     
     size_mb = total_bytes / (1024 * 1024)
     return {
