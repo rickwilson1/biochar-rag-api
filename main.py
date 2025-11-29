@@ -15,7 +15,7 @@ from email_store import get_full_email
 
 app = FastAPI(title="Biochar RAG API")
 
-DATA_DIR = Path(os.getenv("DATA_DIR", "/var/data"))
+DATA_DIR = Path(os.getenv("DATA_DIR", "/opt/render/project/src/data"))
 UPLOAD_SECRET = os.getenv("TOGETHER_API_KEY", "")  # Reuse this as upload auth
 
 

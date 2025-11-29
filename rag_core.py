@@ -29,7 +29,7 @@ TOGETHER_MODEL = os.getenv("TOGETHER_MODEL", "deepseek-r1")
 # Data paths - use /var/data on Render, fallback to ./data locally
 # ---------------------------------------------------------------------------
 
-DATA_DIR = os.getenv("DATA_DIR", "/var/data")
+DATA_DIR = os.getenv("DATA_DIR", "/opt/render/project/src/data")
 
 
 # ---------------------------------------------------------------------------

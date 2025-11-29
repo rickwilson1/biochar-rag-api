@@ -8,7 +8,7 @@ from typing import Dict, Any
 import pandas as pd
 
 # Use /var/data on Render, fallback to ./data locally
-DATA_DIR = os.getenv("DATA_DIR", "/var/data")
+DATA_DIR = os.getenv("DATA_DIR", "/opt/render/project/src/data")
 EMAIL_DATA_PATH = Path(os.getenv("EMAIL_DATA_PATH", f"{DATA_DIR}/emails_clean_normalized.csv"))
 
 _email_df: pd.DataFrame | None = None
