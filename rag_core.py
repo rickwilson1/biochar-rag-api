@@ -114,20 +114,47 @@ def embed_query(text: str) -> np.ndarray:
 # FAISS similarity search
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Global chunks dataframe handle
+# ---------------------------------------------------------------------------
+
+_chunks_df: pd.DataFrame | None = None
+
+
+def load_chunks():
+    """Load the chunks.parquet file that maps embedding indices to text."""
+    global _chunks_df
+    
+    if _chunks_df is not None:
+        return _chunks_df
+    
+    from pathlib import Path
+    chunks_path = Path(DATA_DIR) / "chunks.parquet"
+    
+    if not chunks_path.exists():
+        print(f"WARNING: chunks.parquet not found at {chunks_path}", flush=True)
+        return None
+    
+    print(f"DEBUG: Loading chunks from {chunks_path}", flush=True)
+    _chunks_df = pd.read_parquet(chunks_path)
+    print(f"DEBUG: Loaded {len(_chunks_df)} chunks", flush=True)
+    
+    return _chunks_df
+
+
 def search(
     query: str,
     min_score: float = 0.3,
     max_results: int = 20,
 ) -> List[Dict[str, Any]]:
-    from email_store import load_email_dataframe
 
     load_vector_store()
     q_vec = embed_query(query)
 
     distances, idxs = _index.search(q_vec, max_results)
 
-    # Load email data for content retrieval
-    df = load_email_dataframe()
+    # Load chunks data for content retrieval
+    df = load_chunks()
 
     results: List[Dict[str, Any]] = []
 
@@ -139,20 +166,16 @@ def search(
         if score < min_score:
             continue
 
-        # Get email content from dataframe by index
-        if idx < len(df):
+        # Get chunk content from dataframe by index
+        if df is not None and idx < len(df):
             row = df.iloc[idx]
             subject = str(row.get("subject", "")) if "subject" in df.columns else ""
             from_addr = str(row.get("from", "")) if "from" in df.columns else ""
             to_addr = str(row.get("to", "")) if "to" in df.columns else ""
             date = str(row.get("date", "")) if "date" in df.columns else ""
-            # Try multiple possible column names for email body
-            text = ""
-            for col in ["clean_text", "normalized_text", "full_text", "text", "body", "content"]:
-                if col in df.columns and pd.notna(row.get(col)):
-                    text = str(row.get(col))
-                    break
+            text = str(row.get("chunk_text", "")) if "chunk_text" in df.columns else ""
             thread_id = str(row.get("thread_id", f"thread-{idx}")) if "thread_id" in df.columns else f"thread-{idx}"
+            chunk_id = str(row.get("chunk_id", f"chunk-{idx}")) if "chunk_id" in df.columns else f"chunk-{idx}"
         else:
             subject = f"Subject {idx}"
             from_addr = ""
@@ -160,11 +183,12 @@ def search(
             date = ""
             text = f"Content for chunk {idx}"
             thread_id = f"thread-{idx}"
+            chunk_id = f"chunk-{idx}"
 
         results.append(
             {
                 "rank": rank,
-                "chunk_id": f"chunk-{idx}",
+                "chunk_id": chunk_id,
                 "thread_id": thread_id,
                 "score": score,
                 "content_type": "email",
@@ -230,7 +254,13 @@ When you cite, use [Source N].
     resp.raise_for_status()
 
     out = resp.json()
-    return out["choices"][0]["message"]["content"]
+    answer = out["choices"][0]["message"]["content"]
+    
+    # Strip DeepSeek R1's <think>...</think> reasoning tags
+    import re
+    answer = re.sub(r'<think>.*?</think>\s*', '', answer, flags=re.DOTALL)
+    
+    return answer.strip()
 
 
 # ---------------------------------------------------------------------------

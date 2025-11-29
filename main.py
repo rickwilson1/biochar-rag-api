@@ -61,7 +61,7 @@ def data_status() -> Dict[str, Any]:
     files = {
         "embeddings.npy": (DATA_DIR / "embeddings.npy").exists(),
         "faiss.index": (DATA_DIR / "faiss.index").exists(),
-        "emails_clean_normalized.csv": (DATA_DIR / "emails_clean_normalized.csv").exists(),
+        "chunks.parquet": (DATA_DIR / "chunks.parquet").exists(),
     }
     
     sizes = {}
@@ -111,7 +111,7 @@ async def upload_file(
         raise HTTPException(status_code=401, detail="Invalid authorization")
     
     # Only allow specific filenames
-    allowed = {"embeddings.npy", "faiss.index", "emails_clean_normalized.csv"}
+    allowed = {"embeddings.npy", "faiss.index", "emails_clean_normalized.csv", "chunks.parquet"}
     if filename not in allowed:
         raise HTTPException(status_code=400, detail=f"Filename must be one of: {allowed}")
     
