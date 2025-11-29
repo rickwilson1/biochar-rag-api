@@ -64,11 +64,13 @@ def load_vector_store():
     if not idx_path.exists():
         raise FileNotFoundError(f"Missing FAISS index at {idx_path}")
 
-    _embeddings = np.load(str(emb_path))
-    _index = faiss.read_index(str(idx_path))
+    # Use memory-mapped files to avoid loading everything into RAM
+    # This is critical for Render Starter (512MB RAM) with large files
+    _embeddings = np.load(str(emb_path), mmap_mode='r')
+    _index = faiss.read_index(str(idx_path), faiss.IO_FLAG_MMAP)
 
-    print(f"DEBUG: Loaded embeddings shape: {_embeddings.shape}", flush=True)
-    print(f"DEBUG: FAISS index loaded successfully", flush=True)
+    print(f"DEBUG: Loaded embeddings shape: {_embeddings.shape} (memory-mapped)", flush=True)
+    print(f"DEBUG: FAISS index loaded successfully (memory-mapped)", flush=True)
 
 
 # ---------------------------------------------------------------------------
