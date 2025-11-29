@@ -25,7 +25,7 @@ UPLOAD_SECRET = os.getenv("TOGETHER_API_KEY", "")  # Reuse this as upload auth
 
 class QueryRequest(BaseModel):
     query: str
-    min_score: float = 0.65
+    min_score: float = 0.3
     max_results: int = 20
 
 
