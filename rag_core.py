@@ -74,26 +74,39 @@ def load_vector_store():
 
 
 # ---------------------------------------------------------------------------
-# TEMPORARY deterministic embedding stub
+# Embedding model configuration
 # ---------------------------------------------------------------------------
 
-def embed_query_locally(text: str) -> np.ndarray:
+EMBEDDING_MODEL = "BAAI/bge-large-en-v1.5"
+
+
+def embed_query(text: str) -> np.ndarray:
     """
-    Temporary deterministic pseudo-embedding.
-    Replace with your real embedding model later.
+    Get embedding for query text using Together AI's embedding API.
+    Uses BAAI/bge-large-en-v1.5 model.
     """
-    if _embeddings is None:
-        load_vector_store()
-
-    dim = _embeddings.shape[1]
-
-    seed = abs(hash(text)) % (2**32)
-    rng = np.random.default_rng(seed)
-
-    vec = rng.random(dim)
-    vec = vec / np.linalg.norm(vec)
-
-    return vec.reshape(1, -1).astype(np.float32)
+    headers = {
+        "Authorization": f"Bearer {TOGETHER_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    
+    data = {
+        "model": EMBEDDING_MODEL,
+        "input": text,
+    }
+    
+    resp = requests.post(
+        "https://api.together.xyz/v1/embeddings",
+        json=data,
+        headers=headers,
+        timeout=30,
+    )
+    resp.raise_for_status()
+    
+    result = resp.json()
+    embedding = result["data"][0]["embedding"]
+    
+    return np.array(embedding, dtype=np.float32).reshape(1, -1)
 
 
 # ---------------------------------------------------------------------------
@@ -105,11 +118,15 @@ def search(
     min_score: float = 0.65,
     max_results: int = 20,
 ) -> List[Dict[str, Any]]:
+    from email_store import load_email_dataframe
 
     load_vector_store()
-    q_vec = embed_query_locally(query)
+    q_vec = embed_query(query)
 
     distances, idxs = _index.search(q_vec, max_results)
+
+    # Load email data for content retrieval
+    df = load_email_dataframe()
 
     results: List[Dict[str, Any]] = []
 
@@ -121,18 +138,35 @@ def search(
         if score < min_score:
             continue
 
+        # Get email content from dataframe by index
+        if idx < len(df):
+            row = df.iloc[idx]
+            subject = str(row.get("subject", "")) if "subject" in df.columns else ""
+            from_addr = str(row.get("from", "")) if "from" in df.columns else ""
+            to_addr = str(row.get("to", "")) if "to" in df.columns else ""
+            date = str(row.get("date", "")) if "date" in df.columns else ""
+            text = str(row.get("full_text", row.get("text", "")))
+            thread_id = str(row.get("thread_id", f"thread-{idx}")) if "thread_id" in df.columns else f"thread-{idx}"
+        else:
+            subject = f"Subject {idx}"
+            from_addr = ""
+            to_addr = ""
+            date = ""
+            text = f"Content for chunk {idx}"
+            thread_id = f"thread-{idx}"
+
         results.append(
             {
                 "rank": rank,
                 "chunk_id": f"chunk-{idx}",
-                "thread_id": f"thread-{idx}",
+                "thread_id": thread_id,
                 "score": score,
                 "content_type": "email",
-                "subject": f"Subject {idx}",
-                "from": "",
-                "to": "",
-                "date": "",
-                "text": f"Placeholder text for chunk {idx}",
+                "subject": subject,
+                "from": from_addr,
+                "to": to_addr,
+                "date": date,
+                "text": text[:1500] if text else "",  # Limit text length
             }
         )
 
