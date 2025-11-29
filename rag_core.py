@@ -294,22 +294,31 @@ When you cite, use [Source N].
         "temperature": 0.3,
     }
 
-    resp = requests.post(
-        "https://api.together.xyz/v1/chat/completions",
-        json=data,
-        headers=headers,
-        timeout=60,
-    )
-    resp.raise_for_status()
+    try:
+        resp = requests.post(
+            "https://api.together.xyz/v1/chat/completions",
+            json=data,
+            headers=headers,
+            timeout=120,  # Increased timeout for DeepSeek R1 thinking
+        )
+        resp.raise_for_status()
 
-    out = resp.json()
-    answer = out["choices"][0]["message"]["content"]
+        out = resp.json()
+        answer = out["choices"][0]["message"]["content"]
+        
+        # Strip DeepSeek R1's <think>...</think> reasoning tags
+        import re
+        answer = re.sub(r'<think>.*?</think>\s*', '', answer, flags=re.DOTALL)
+        
+        return answer.strip()
     
-    # Strip DeepSeek R1's <think>...</think> reasoning tags
-    import re
-    answer = re.sub(r'<think>.*?</think>\s*', '', answer, flags=re.DOTALL)
+    except requests.exceptions.Timeout:
+        print("DEBUG: LLM call timed out", flush=True)
+        return "I found relevant information but the AI response timed out. Please try again or review the sources below."
     
-    return answer.strip()
+    except Exception as e:
+        print(f"DEBUG: LLM call failed: {e}", flush=True)
+        return f"I found relevant information but couldn't generate a summary. Error: {str(e)[:100]}"
 
 
 # ---------------------------------------------------------------------------
