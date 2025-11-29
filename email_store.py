@@ -42,7 +42,8 @@ def get_full_email(thread_id: str) -> Dict[str, Any] | None:
         "subject": r.get("subject", ""),
         "from": r.get("from", ""),
         "to": r.get("to", ""),
+        "cc": r.get("cc", ""),
         "date": r.get("date", ""),
-        "full_text": r.get("full_text", r.get("text", "")),
-        "chunk_count": int(r.get("chunk_count", 1)),
+        "full_text": r.get("clean_text", r.get("normalized_text", "")),
+        "chunk_count": 1,
     }

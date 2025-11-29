@@ -148,7 +148,7 @@ def search(
             date = str(row.get("date", "")) if "date" in df.columns else ""
             # Try multiple possible column names for email body
             text = ""
-            for col in ["full_text", "text", "body", "content", "message"]:
+            for col in ["clean_text", "normalized_text", "full_text", "text", "body", "content"]:
                 if col in df.columns and pd.notna(row.get(col)):
                     text = str(row.get(col))
                     break
