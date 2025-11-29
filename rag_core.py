@@ -5,6 +5,7 @@ import os
 from typing import List, Dict, Any
 
 import numpy as np
+import pandas as pd
 import faiss
 import requests
 
@@ -115,7 +116,7 @@ def embed_query(text: str) -> np.ndarray:
 
 def search(
     query: str,
-    min_score: float = 0.65,
+    min_score: float = 0.3,
     max_results: int = 20,
 ) -> List[Dict[str, Any]]:
     from email_store import load_email_dataframe
@@ -145,7 +146,12 @@ def search(
             from_addr = str(row.get("from", "")) if "from" in df.columns else ""
             to_addr = str(row.get("to", "")) if "to" in df.columns else ""
             date = str(row.get("date", "")) if "date" in df.columns else ""
-            text = str(row.get("full_text", row.get("text", "")))
+            # Try multiple possible column names for email body
+            text = ""
+            for col in ["full_text", "text", "body", "content", "message"]:
+                if col in df.columns and pd.notna(row.get(col)):
+                    text = str(row.get(col))
+                    break
             thread_id = str(row.get("thread_id", f"thread-{idx}")) if "thread_id" in df.columns else f"thread-{idx}"
         else:
             subject = f"Subject {idx}"
