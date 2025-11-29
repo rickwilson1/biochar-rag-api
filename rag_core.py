@@ -23,7 +23,7 @@ print(
     flush=True,
 )
 
-TOGETHER_MODEL = os.getenv("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo")
+TOGETHER_MODEL = os.getenv("TOGETHER_MODEL", "deepseek-ai/DeepSeek-R1-0528")
 
 
 # ---------------------------------------------------------------------------
