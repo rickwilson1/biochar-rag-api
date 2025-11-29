@@ -75,6 +75,52 @@ def load_vector_store():
 
 
 # ---------------------------------------------------------------------------
+# Query translation for multilingual support
+# ---------------------------------------------------------------------------
+
+def translate_to_english(text: str) -> str:
+    """
+    Translate query to English if needed, using the LLM.
+    Returns original text if already English or on error.
+    """
+    if not TOGETHER_API_KEY:
+        return text
+    
+    try:
+        resp = requests.post(
+            "https://api.together.xyz/v1/chat/completions",
+            json={
+                "model": TOGETHER_MODEL,
+                "messages": [{
+                    "role": "user", 
+                    "content": f"If this text is not in English, translate it to English. If already English, return it unchanged. Only output the text, nothing else:\n\n{text}"
+                }],
+                "max_tokens": 256,
+                "temperature": 0,
+            },
+            headers={
+                "Authorization": f"Bearer {TOGETHER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        
+        result = resp.json()["choices"][0]["message"]["content"].strip()
+        
+        # Strip DeepSeek R1's <think>...</think> reasoning tags
+        import re
+        result = re.sub(r'<think>.*?</think>\s*', '', result, flags=re.DOTALL)
+        
+        print(f"DEBUG: Translation: '{text[:50]}...' -> '{result[:50]}...'", flush=True)
+        return result.strip()
+        
+    except Exception as e:
+        print(f"DEBUG: Translation failed, using original: {e}", flush=True)
+        return text
+
+
+# ---------------------------------------------------------------------------
 # Embedding model configuration
 # ---------------------------------------------------------------------------
 
@@ -149,7 +195,10 @@ def search(
 ) -> List[Dict[str, Any]]:
 
     load_vector_store()
-    q_vec = embed_query(query)
+    
+    # Translate non-English queries to English for better embedding match
+    english_query = translate_to_english(query)
+    q_vec = embed_query(english_query)
 
     distances, idxs = _index.search(q_vec, max_results)
 
