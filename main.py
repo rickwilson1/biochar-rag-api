@@ -262,25 +262,30 @@ async def cleanup_files(authorization: str = Header(None)):
 # Copyright protection - block high-risk PDFs
 # ---------------------------------------------------------------------------
 
-# Filename patterns indicating academic publisher PDFs
+# Filename patterns indicating academic publisher PDFs (BLOCKED)
 BLOCKED_FILENAME_PATTERNS = [
     r"^1-s2\.0-S",           # Elsevier/ScienceDirect
     r"^s4\d+-0",             # Springer
     r"^pii[_-]",             # Publisher Item Identifier
     r"^10\.\d+[_-]",         # DOI-based filenames
     r"-main[_-][a-f0-9]+\.pdf$",  # Common journal download pattern
-    r"^nature\d+",           # Nature journals
-    r"^srep\d+",             # Scientific Reports
-    r"gcb[_-]?bioenergy",    # Global Change Biology Bioenergy
+    r"^nature\d+",           # Nature journals (not Nature Communications)
     r"bioresource[_-]?tech",  # Bioresource Technology
-    r"^agronomy-\d+",        # MDPI Agronomy
-    r"^sustainability-\d+",  # MDPI Sustainability
-    r"^energies-\d+",        # MDPI Energies
-    r"soil[_-]?biol",        # Soil Biology journals
     r"geoderma",             # Geoderma journal
     r"chemosphere",          # Chemosphere journal
     r"j\.envman",            # Journal of Environmental Management
-    r"j\.soilbio",           # Journal of Soil Biology
+]
+
+# Filename patterns for OPEN ACCESS journals (explicitly allowed)
+ALLOWED_FILENAME_PATTERNS = [
+    r"gcb[_-]?bioenergy",    # GCB Bioenergy - Open Access
+    r"^srep\d+",             # Scientific Reports - Open Access
+    r"^agronomy-\d+",        # MDPI Agronomy - Open Access
+    r"^sustainability-\d+",  # MDPI Sustainability - Open Access
+    r"^energies-\d+",        # MDPI Energies - Open Access
+    r"^plosone",             # PLOS ONE - Open Access
+    r"^frontiers",           # Frontiers journals - Open Access
+    r"nature.?communications", # Nature Communications - Open Access
 ]
 
 # Publishers and copyright phrases to check in content
@@ -315,7 +320,12 @@ def is_copyright_blocked(filename: str, chunk_text: str = "") -> tuple[bool, str
     if not filename_lower.endswith('.pdf'):
         return False, ""
     
-    # Check filename patterns
+    # First check if it's an ALLOWED open access journal
+    for pattern in ALLOWED_FILENAME_PATTERNS:
+        if re.search(pattern, filename_lower):
+            return False, ""  # Explicitly allowed - open access
+    
+    # Check filename patterns for blocked publishers
     for pattern in BLOCKED_FILENAME_PATTERNS:
         if re.search(pattern, filename_lower):
             return True, "This appears to be a copyrighted academic publication based on its filename pattern."
