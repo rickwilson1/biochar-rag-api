@@ -271,6 +271,16 @@ BLOCKED_FILENAME_PATTERNS = [
     r"-main[_-][a-f0-9]+\.pdf$",  # Common journal download pattern
     r"^nature\d+",           # Nature journals
     r"^srep\d+",             # Scientific Reports
+    r"gcb[_-]?bioenergy",    # Global Change Biology Bioenergy
+    r"bioresource[_-]?tech",  # Bioresource Technology
+    r"^agronomy-\d+",        # MDPI Agronomy
+    r"^sustainability-\d+",  # MDPI Sustainability
+    r"^energies-\d+",        # MDPI Energies
+    r"soil[_-]?biol",        # Soil Biology journals
+    r"geoderma",             # Geoderma journal
+    r"chemosphere",          # Chemosphere journal
+    r"j\.envman",            # Journal of Environmental Management
+    r"j\.soilbio",           # Journal of Soil Biology
 ]
 
 # Publishers and copyright phrases to check in content
@@ -330,24 +340,12 @@ def is_copyright_blocked(filename: str, chunk_text: str = "") -> tuple[bool, str
 
 
 def get_attachment_text(filename: str) -> str:
-    """Get the indexed text for an attachment from chunks.parquet."""
-    try:
-        import pandas as pd
-        chunks_path = DATA_DIR / "chunks.parquet"
-        if not chunks_path.exists():
-            return ""
-        
-        df = pd.read_parquet(chunks_path)
-        # Find chunks matching this filename
-        if 'filename' in df.columns:
-            matches = df[df['filename'].str.contains(filename.split('_')[0], case=False, na=False)]
-            if not matches.empty:
-                # Combine all chunk texts for this file
-                texts = matches['chunk_text'].dropna().tolist()
-                return " ".join(texts[:3])  # First 3 chunks should be enough
-    except Exception:
-        pass
-    return ""
+    """
+    Get the indexed text for an attachment from chunks.parquet.
+    DISABLED: Loading 76MB parquet on each request causes memory issues.
+    Using filename-based blocking only.
+    """
+    return ""  # Skip content checking to avoid memory issues
 
 
 # ---------------------------------------------------------------------------
