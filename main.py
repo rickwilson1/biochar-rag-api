@@ -111,7 +111,7 @@ async def upload_file(
         raise HTTPException(status_code=401, detail="Invalid authorization")
     
     # Only allow specific filenames
-    allowed = {"embeddings.npy", "faiss.index", "emails_clean_normalized.csv", "chunks.parquet"}
+    allowed = {"embeddings.npy", "faiss.index", "emails_clean_normalized.csv", "chunks.parquet", "attachments.tar.gz"}
     if filename not in allowed:
         raise HTTPException(status_code=400, detail=f"Filename must be one of: {allowed}")
     
@@ -143,6 +143,88 @@ async def upload_file(
         "size": f"{size_mb:.1f} MB",
         "path": str(file_path),
     }
+
+
+# ---------------------------------------------------------------------------
+# Extract attachments archive
+# ---------------------------------------------------------------------------
+
+@app.post("/extract-attachments")
+async def extract_attachments(authorization: str = Header(None)):
+    """
+    Extract the uploaded attachments.tar.gz archive.
+    Requires Authorization header with your TOGETHER_API_KEY.
+    """
+    import tarfile
+    import shutil
+    
+    # Verify auth
+    if not UPLOAD_SECRET:
+        raise HTTPException(status_code=500, detail="Server not configured")
+    
+    expected = f"Bearer {UPLOAD_SECRET}"
+    if authorization != expected:
+        raise HTTPException(status_code=401, detail="Invalid authorization")
+    
+    archive_path = DATA_DIR / "attachments.tar.gz"
+    if not archive_path.exists():
+        raise HTTPException(status_code=404, detail="attachments.tar.gz not found. Upload it first.")
+    
+    extract_dir = DATA_DIR / "attachments"
+    
+    try:
+        # Remove existing attachments directory if present
+        if extract_dir.exists():
+            shutil.rmtree(extract_dir)
+        
+        # Extract the archive
+        with tarfile.open(archive_path, "r:gz") as tar:
+            tar.extractall(path=DATA_DIR)
+        
+        # Count extracted files
+        file_count = len(list(extract_dir.glob("*"))) if extract_dir.exists() else 0
+        
+        # Optionally delete the archive to save space
+        archive_path.unlink()
+        
+        return {
+            "status": "extracted",
+            "files": file_count,
+            "path": str(extract_dir),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Extraction failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Serve attachment files
+# ---------------------------------------------------------------------------
+
+@app.get("/attachment/{filename:path}")
+def get_attachment(filename: str):
+    """
+    Serve an attachment file (PDF, JPG, PNG, etc.)
+    """
+    from fastapi.responses import FileResponse
+    import mimetypes
+    
+    # Sanitize filename to prevent directory traversal
+    safe_filename = Path(filename).name
+    file_path = DATA_DIR / "attachments" / safe_filename
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    
+    # Determine content type
+    content_type, _ = mimetypes.guess_type(str(file_path))
+    if content_type is None:
+        content_type = "application/octet-stream"
+    
+    return FileResponse(
+        path=file_path,
+        media_type=content_type,
+        filename=safe_filename,
+    )
 
 
 # ---------------------------------------------------------------------------
