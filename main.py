@@ -259,6 +259,98 @@ async def cleanup_files(authorization: str = Header(None)):
 
 
 # ---------------------------------------------------------------------------
+# Copyright protection - block high-risk PDFs
+# ---------------------------------------------------------------------------
+
+# Filename patterns indicating academic publisher PDFs
+BLOCKED_FILENAME_PATTERNS = [
+    r"^1-s2\.0-S",           # Elsevier/ScienceDirect
+    r"^s4\d+-0",             # Springer
+    r"^pii[_-]",             # Publisher Item Identifier
+    r"^10\.\d+[_-]",         # DOI-based filenames
+    r"-main[_-][a-f0-9]+\.pdf$",  # Common journal download pattern
+    r"^nature\d+",           # Nature journals
+    r"^srep\d+",             # Scientific Reports
+]
+
+# Publishers and copyright phrases to check in content
+COPYRIGHT_PUBLISHERS = [
+    "elsevier", "springer", "wiley", "nature publishing",
+    "taylor & francis", "taylor and francis", "ieee",
+    "american chemical society", "acs publications",
+    "mdpi", "frontiers", "sage publications", "oxford university press",
+    "cambridge university press", "royal society of chemistry",
+    "cell press", "science magazine", "aaas",
+]
+
+COPYRIGHT_PHRASES = [
+    "all rights reserved",
+    "no part of this publication may be reproduced",
+    "unauthorized reproduction",
+    "licensed under cc by-nc",  # Non-commercial Creative Commons
+    "for personal use only",
+]
+
+
+def is_copyright_blocked(filename: str, chunk_text: str = "") -> tuple[bool, str]:
+    """
+    Check if a PDF should be blocked due to copyright concerns.
+    Returns (is_blocked, reason).
+    """
+    import re
+    
+    filename_lower = filename.lower()
+    
+    # Only check PDFs
+    if not filename_lower.endswith('.pdf'):
+        return False, ""
+    
+    # Check filename patterns
+    for pattern in BLOCKED_FILENAME_PATTERNS:
+        if re.search(pattern, filename_lower):
+            return True, "This appears to be a copyrighted academic publication based on its filename pattern."
+    
+    # Check content for copyright notices
+    if chunk_text:
+        text_lower = chunk_text.lower()
+        
+        # Check for publisher names with copyright context
+        for publisher in COPYRIGHT_PUBLISHERS:
+            if publisher in text_lower:
+                # Look for copyright indicators near publisher name
+                if any(phrase in text_lower for phrase in ["©", "copyright", "published by", "journal of"]):
+                    return True, f"This document appears to be published by a commercial publisher and may be copyrighted."
+        
+        # Check for explicit copyright phrases
+        for phrase in COPYRIGHT_PHRASES:
+            if phrase in text_lower:
+                return True, "This document contains copyright restrictions."
+    
+    return False, ""
+
+
+def get_attachment_text(filename: str) -> str:
+    """Get the indexed text for an attachment from chunks.parquet."""
+    try:
+        import pandas as pd
+        chunks_path = DATA_DIR / "chunks.parquet"
+        if not chunks_path.exists():
+            return ""
+        
+        df = pd.read_parquet(chunks_path)
+        # Find chunks matching this filename
+        if 'filename' in df.columns:
+            matches = df[df['filename'].str.contains(filename.split('_')[0], case=False, na=False)]
+            if not matches.empty:
+                # Combine all chunk texts for this file
+                texts = matches['chunk_text'].dropna().tolist()
+                return " ".join(texts[:3])  # First 3 chunks should be enough
+    except Exception:
+        pass
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # Serve attachment files
 # ---------------------------------------------------------------------------
 
@@ -266,8 +358,9 @@ async def cleanup_files(authorization: str = Header(None)):
 def get_attachment(filename: str):
     """
     Serve an attachment file (PDF, JPG, PNG, etc.)
+    Blocks copyrighted academic PDFs.
     """
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, JSONResponse
     import mimetypes
     
     # Sanitize filename to prevent directory traversal
@@ -276,6 +369,23 @@ def get_attachment(filename: str):
     
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Attachment not found")
+    
+    # Check for copyright restrictions on PDFs
+    if safe_filename.lower().endswith('.pdf'):
+        chunk_text = get_attachment_text(safe_filename)
+        is_blocked, reason = is_copyright_blocked(safe_filename, chunk_text)
+        
+        if is_blocked:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "error": "Download blocked",
+                    "reason": reason,
+                    "message": "This PDF cannot be downloaded due to potential copyright restrictions. "
+                               "The content is available for viewing in the search results above.",
+                    "filename": safe_filename,
+                }
+            )
     
     # Determine content type
     content_type, _ = mimetypes.guess_type(str(file_path))
