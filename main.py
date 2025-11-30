@@ -296,6 +296,7 @@ COPYRIGHT_PUBLISHERS = [
     "mdpi", "frontiers", "sage publications", "oxford university press",
     "cambridge university press", "royal society of chemistry",
     "cell press", "science magazine", "aaas",
+    "journal of environmental quality",
 ]
 
 COPYRIGHT_PHRASES = [
