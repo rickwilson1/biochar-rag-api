@@ -227,6 +227,10 @@ def search(
             text = str(row.get("chunk_text", "")) if "chunk_text" in df.columns else ""
             thread_id = str(row.get("thread_id", f"thread-{idx}")) if "thread_id" in df.columns else f"thread-{idx}"
             chunk_id = str(row.get("chunk_id", f"chunk-{idx}")) if "chunk_id" in df.columns else f"chunk-{idx}"
+            content_type = str(row.get("content_type", "email")) if "content_type" in df.columns else "email"
+            # Get attachment info
+            attachment_names = str(row.get("attachment_names", "")) if "attachment_names" in df.columns else ""
+            filename = str(row.get("filename", "")) if "filename" in df.columns else ""
         else:
             subject = f"Subject {idx}"
             from_addr = ""
@@ -235,6 +239,9 @@ def search(
             text = f"Content for chunk {idx}"
             thread_id = f"thread-{idx}"
             chunk_id = f"chunk-{idx}"
+            content_type = "email"
+            attachment_names = ""
+            filename = ""
 
         results.append(
             {
@@ -242,12 +249,14 @@ def search(
                 "chunk_id": chunk_id,
                 "thread_id": thread_id,
                 "score": score,
-                "content_type": "email",
+                "content_type": content_type,
                 "subject": subject,
                 "from": from_addr,
                 "to": to_addr,
                 "date": date,
                 "text": text[:1500] if text else "",  # Limit text length
+                "attachment_names": attachment_names,  # Comma-separated list for emails
+                "filename": filename,  # Single filename for attachment chunks
             }
         )
 
