@@ -197,6 +197,68 @@ async def extract_attachments(authorization: str = Header(None)):
 
 
 # ---------------------------------------------------------------------------
+# Disk usage and cleanup
+# ---------------------------------------------------------------------------
+
+@app.get("/disk-usage")
+def disk_usage():
+    """Show disk usage for data directory."""
+    import shutil
+    
+    total, used, free = shutil.disk_usage(DATA_DIR)
+    
+    # List all files and directories with sizes
+    items = {}
+    if DATA_DIR.exists():
+        for item in DATA_DIR.iterdir():
+            if item.is_file():
+                items[item.name] = f"{item.stat().st_size / (1024*1024):.1f} MB"
+            elif item.is_dir():
+                # Sum up directory size
+                dir_size = sum(f.stat().st_size for f in item.rglob('*') if f.is_file())
+                items[item.name + "/"] = f"{dir_size / (1024*1024):.1f} MB"
+    
+    return {
+        "total_gb": f"{total / (1024**3):.2f} GB",
+        "used_gb": f"{used / (1024**3):.2f} GB", 
+        "free_gb": f"{free / (1024**3):.2f} GB",
+        "data_dir_contents": items,
+    }
+
+
+@app.post("/cleanup")
+async def cleanup_files(authorization: str = Header(None)):
+    """
+    Delete old/temporary files to free up disk space.
+    Removes: attachments.tar.gz, old embeddings, etc.
+    """
+    import shutil
+    
+    if not UPLOAD_SECRET:
+        raise HTTPException(status_code=500, detail="Server not configured")
+    
+    expected = f"Bearer {UPLOAD_SECRET}"
+    if authorization != expected:
+        raise HTTPException(status_code=401, detail="Invalid authorization")
+    
+    deleted = []
+    
+    # Delete tar.gz if exists
+    tar_path = DATA_DIR / "attachments.tar.gz"
+    if tar_path.exists():
+        tar_path.unlink()
+        deleted.append("attachments.tar.gz")
+    
+    # Delete old attachments directory if it exists
+    att_dir = DATA_DIR / "attachments"
+    if att_dir.exists():
+        shutil.rmtree(att_dir)
+        deleted.append("attachments/")
+    
+    return {"deleted": deleted, "message": "Cleanup complete"}
+
+
+# ---------------------------------------------------------------------------
 # Serve attachment files
 # ---------------------------------------------------------------------------
 
