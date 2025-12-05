@@ -16,6 +16,68 @@ from email_store import get_full_email
 app = FastAPI(title="Biochar RAG API")
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "/opt/render/project/src/data"))
+
+
+# ---------------------------------------------------------------------------
+# Root endpoint - migration notice
+# ---------------------------------------------------------------------------
+
+@app.get("/")
+def root():
+    """Root endpoint with migration notice."""
+    from fastapi.responses import HTMLResponse
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Biochar RAG API - Moved</title>
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                margin: 0;
+                background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+                color: #fff;
+            }
+            .container {
+                text-align: center;
+                padding: 40px;
+                background: rgba(255,255,255,0.1);
+                border-radius: 16px;
+                backdrop-filter: blur(10px);
+                max-width: 500px;
+            }
+            h1 { color: #4ade80; margin-bottom: 10px; }
+            .new-url {
+                font-size: 1.5em;
+                color: #60a5fa;
+                margin: 20px 0;
+            }
+            a {
+                color: #60a5fa;
+                text-decoration: none;
+            }
+            a:hover { text-decoration: underline; }
+            .note { color: #94a3b8; font-size: 0.9em; margin-top: 20px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🌱 Biochar RAG API</h1>
+            <p>This API has moved to a new home!</p>
+            <div class="new-url">
+                <a href="https://biocharai.org">biocharai.org</a>
+            </div>
+            <p>Please update your bookmarks and links.</p>
+            <p class="note">This Render deployment will be deprecated soon.</p>
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html)
 UPLOAD_SECRET = os.getenv("TOGETHER_API_KEY", "")  # Reuse this as upload auth
 
 
